@@ -161,7 +161,7 @@
     var moved_node = node.transition().duration(duration)
         .attr("transform", function(d) { return "translate(" + d.y + "," + d.x + ")"; });
     moved_node.select("circle")
-        .attr("r", function(d) {return r2(d);})
+        .attr("r", function(d) {return r3(d);})
         .style("fill", function(d) {
           if (childless(d)) return "#fff";
           return d._children ? (d.in_cut ? "red": (d.uncut_area ? "lightsteelblue" : "green")) : 
