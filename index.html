@@ -60,7 +60,7 @@
   <p id="popup-content"></p>
 </div>
 
-
+<input type="number" id="limit-input" placeholder="Enter LIMIT">
 <button id="finish-button">Finish</button>
 
 <script src="https://d3js.org/d3.v3.min.js"></script>
@@ -74,7 +74,8 @@
 
   var i = 0,
       duration = 750,
-      root;
+      root,
+      LIMIT = 800000;
 
   var tree = d3.layout.tree()
       .size([tree_height, tree_width]);
@@ -84,6 +85,8 @@
 
   var svg = d3.select("svg g")
       .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
+  var b = false;
 
   d3.json("input_graph_tree.json", function(error, tree_data) {
     root = tree_data;
@@ -113,7 +116,7 @@
   }
 
   function update(source) {
-
+    console.log("Update");
     var c1 = 0.1;
     var c2 = 0.00006;
     function r1(d) {return 3 + Math.max(0, c1 * Math.log(d.area));}
@@ -134,6 +137,7 @@
     // Enter any new nodes at the parent's previous position.
     var new_nodes = node.enter().append("g")
         .attr("class", "node")
+        .attr("data-id", function(d) { return d.id; })
         .attr("transform", function(d) { return "translate(" + source.y0 + "," + source.x0 + ")"; });
 
     new_nodes.append("circle")
@@ -164,8 +168,8 @@
         .attr("r", function(d) {return r3(d);})
         .style("fill", function(d) {
           if (childless(d)) return "#fff";
-          return d._children ? (d.in_cut ? "red": (d.uncut_area ? "lightsteelblue" : "green")) : 
-                              (d.uncut_area ? "#fff" : "green"); }
+          return d._children ? (d.in_cut ? "red": (d.uncut_area ? "lightsteelblue" : "lightsteelblue")) : 
+                              (d.uncut_area ? "#fff" : "#fff"); }
         );
     moved_node.select("text")
         .style("fill-opacity", 1);
@@ -320,51 +324,91 @@
     document.getElementById("popup").style.display = "none";
   }
 
-  document.getElementById("finish-button").addEventListener("click", function() {
-    var namesInCut = [];
-    var sand = [];
-    collectNamesInCut(root, namesInCut, sand);
+document.getElementById("finish-button").addEventListener("click", function() {
+  var namesInCut = [];
+  collectNamesInCut(root, namesInCut);
 
-    // Create a Blob with the names
-    var blob = new Blob([namesInCut.join('\n')], { type: 'text/plain' });
-    
-    // Create an object URL for the Blob
-    var url = window.URL.createObjectURL(blob);
-    
-    // Create a temporary link element and trigger the download
-    var a = document.createElement("a");
-    a.style.display = "none";
-    a.href = url;
-    a.download = "out.txt";
-    document.body.appendChild(a);
-    a.click();
-    
-    // Clean up by removing the temporary link element and revoking the object URL
-    window.URL.revokeObjectURL(url);
-    document.body.removeChild(a);
+  // Create a Blob with the names
+  var blob = new Blob([namesInCut.join('\n')], { type: 'text/plain' });
 
-  });
+  // Create an object URL for the Blob
+  var url = window.URL.createObjectURL(blob);
 
-  function collectNamesInCut(node, names, sand) {
-    if (node.in_cut) {
-      names.push(node.full_name);
-      return; // no descendant will be a cut-node
-    }
+  // Create a temporary link element and trigger the download
+  var a = document.createElement("a");
+  a.style.display = "none";
+  a.href = url;
+  a.download = "out.txt";
+  document.body.appendChild(a);
+  a.click();
 
-    if (node.area == node.uncut_area) return;
-
-    if (node.children) {
-      node.children.forEach(function(child) {
-        collectNamesInCut(child, names);
-      });
-    }
-
-    if (node._children) {
-      node._children.forEach(function(child) {
-        collectNamesInCut(child, names);
-      });
-    }
+  // Clean up by removing the temporary link element and revoking the object URL
+  window.URL.revokeObjectURL(url);
+  document.body.removeChild(a);
+  
+  if (b) {
+    var popup = document.getElementById("popup");
+    var popupContent = document.getElementById("popup-content");
+    popupContent.innerHTML = "Warning: uncut area exceeds limit!";
+    popup.style.display = "block";
+    popup.style.left = "50%";
+    popup.style.top = "50%";
+    popup.style.transform = "translate(-50%, -50%)";
+    b = false;
   }
+});
+
+
+
+function collectNamesInCut(node, names) {
+  var color = "orange";
+
+  if (node.in_cut) {
+    names.push(node.full_name);
+    return;
+  }
+
+  if (node.uncut_area > LIMIT && node != root && !childless(node)) {
+    d3.select("[data-id='" + node.id + "']").select("circle").style("fill", color);
+    b = true;
+  }
+
+  
+  if (node.area == node.uncut_area) {
+    if (node.uncut_area <= LIMIT) return;
+    markUncutChildren(node, color);
+  }
+
+  if (node.children) {
+    node.children.forEach(function(child) {
+      collectNamesInCut(child, names);
+    });
+    node.children.forEach(function(child) {
+      if(child.uncut_area > LIMIT && !childless(child)) 
+        d3.select("[data-id='" + child.id + "']").select("circle").style("fill", "orange");
+    });
+  }
+
+  if (node._children) {
+    node._children.forEach(function(child) {
+      collectNamesInCut(child, names);
+    });
+  }
+}
+
+function markUncutChildren(node, color) {
+  if (node.children)
+    node.children.forEach(function(child){
+      if (child.uncut_area > LIMIT && !childless(child)) {
+        d3.select("[data-id='" + child.id + "']").select("circle").style("fill", color);
+        markUncutChildren(child, color);
+      }
+    });
+}
+
+document.getElementById("limit-input").addEventListener("change", function(event) {
+    LIMIT = parseInt(event.target.value, 10);
+  });
 
 
 </script>
